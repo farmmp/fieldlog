@@ -1,63 +1,73 @@
-"""Log router for fieldlog.
+"""Log routing: dispatch entries to one or more sinks based on filter rules."""
 
-Routes log entries through a pipeline of filters and writers so that
-different entries can be directed to different destinations.
-"""
-
-from __future__ import annotations
-
-from typing import Callable, List, Tuple
+from typing import Any, Callable, Dict, List, Optional
 
 from fieldlog.filter import Filter
 
-# A sink is any callable that accepts a single log-entry dict.
-Sink = Callable[[dict], None]
-
 
 class Route:
-    """A (filter, sink) pair."""
+    """Associates a :class:`Filter` with a sink callable."""
 
-    def __init__(self, flt: Filter, sink: Sink):
-        self.flt = flt
+    def __init__(
+        self,
+        filt: Filter,
+        sink: Callable[[Dict[str, Any]], None],
+        *,
+        label: Optional[str] = None,
+    ) -> None:
+        self.filt = filt
         self.sink = sink
+        self.label = label
 
-    def process(self, entry: dict) -> bool:
-        """Send *entry* to sink if it passes the filter. Returns True if sent."""
-        if self.flt(entry):
+    def process(self, entry: Dict[str, Any]) -> bool:
+        """Forward *entry* to sink if filter matches.  Returns match result."""
+        if self.filt(entry):
             self.sink(entry)
             return True
         return False
 
 
 class LogRouter:
-    """Routes each log entry to one or more matching sinks.
+    """Dispatches log entries to registered routes.
 
-    By default every matching route receives the entry (fan-out).  Set
-    ``first_match=True`` to stop after the first matching route.
+    Two strategies are supported:
+
+    * **fanout** (default) – every matching route receives the entry.
+    * **first-match** – only the first matching route receives the entry.
     """
 
-    def __init__(self, first_match: bool = False):
+    def __init__(self, *, first_match: bool = False) -> None:
         self._routes: List[Route] = []
         self.first_match = first_match
 
-    def add_route(self, flt: Filter, sink: Sink) -> "LogRouter":
-        """Register a route and return *self* for chaining."""
-        self._routes.append(Route(flt, sink))
+    # ------------------------------------------------------------------
+    # Public API
+    # ------------------------------------------------------------------
+
+    def add_route(
+        self,
+        filt: Filter,
+        sink: Callable[[Dict[str, Any]], None],
+        *,
+        label: Optional[str] = None,
+    ) -> "LogRouter":
+        """Register a new route and return *self* for chaining."""
+        self._routes.append(Route(filt, sink, label=label))
         return self
 
-    def dispatch(self, entry: dict) -> int:
-        """Dispatch *entry* to all matching sinks. Returns count of sinks reached."""
-        count = 0
+    def dispatch(self, entry: Dict[str, Any]) -> int:
+        """Send *entry* through all (or first matching) routes.
+
+        Returns the number of sinks that received the entry.
+        """
+        hits = 0
         for route in self._routes:
-            if route.process(entry):
-                count += 1
+            matched = route.process(entry)
+            if matched:
+                hits += 1
                 if self.first_match:
                     break
-        return count
+        return hits
 
-    def dispatch_many(self, entries: list[dict]) -> int:
-        """Dispatch a batch of entries. Returns total sinks reached."""
-        return sum(self.dispatch(e) for e in entries)
-
-    def __len__(self) -> int:  # number of registered routes
+    def __len__(self) -> int:  # pragma: no cover
         return len(self._routes)
