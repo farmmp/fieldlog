@@ -1,5 +1,4 @@
-"""
-fieldlog.splitter
+"""fieldlog.splitter
 ~~~~~~~~~~~~~~~~~
 Routes log entries to different sinks based on a key extracted from
 each entry.  Useful for fan-out by severity tier, tenant, or any
@@ -75,6 +74,28 @@ class Splitter:
         if not callable(sink):
             raise SplitterError(f"sink for key {key!r} is not callable")
         self._sinks[key] = sink
+
+    def remove_sink(self, key: str) -> None:
+        """Remove the sink registered for *key*.
+
+        Parameters
+        ----------
+        key:
+            The sink key to remove.
+
+        Raises
+        ------
+        SplitterError
+            If *key* is not currently registered, or if removing it would
+            leave the splitter with no sinks and no default_sink.
+        """
+        if key not in self._sinks:
+            raise SplitterError(f"no sink registered for key {key!r}")
+        if len(self._sinks) == 1 and self._default_sink is None:
+            raise SplitterError(
+                f"cannot remove the last sink {key!r} without a default_sink"
+            )
+        del self._sinks[key]
 
     def reset_dropped(self) -> None:
         """Reset the dropped-entry counter."""
