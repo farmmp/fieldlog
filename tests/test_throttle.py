@@ -1,6 +1,4 @@
-"""
-Tests for fieldlog.throttle.Throttle
-"""
+"""Tests for fieldlog.throttle.Throttle"""
 
 import pytest
 from fieldlog.throttle import Throttle
@@ -103,21 +101,31 @@ def test_custom_key_fn(collected, clock):
     )
     t(_entry(tag="gps"))
     t(_entry(tag="gps"))    # dropped
-    t(_entry(tag="sensor")) # different key — allowed
+    t(_entry(tag="imu"))    # different key, allowed
     assert len(collected) == 2
+    assert t.dropped_count("gps") == 1
+    assert t.dropped_count("imu") == 0
 
 
-def test_dropped_count_all_keys(collected, clock):
+# ---------------------------------------------------------------------------
+# Reset behaviour
+# ---------------------------------------------------------------------------
+
+def test_reset_clears_dropped_count(collected, clock):
+    """Calling reset() should zero out the dropped counter for all keys."""
     t = Throttle(limit=1, window=1.0, sink=collected.append, clock=clock)
-    t(_entry(level="info")); t(_entry(level="info"))   # 1 drop
-    t(_entry(level="warn")); t(_entry(level="warn"))   # 1 drop
-    assert t.dropped_count() == 2
-
-
-def test_reset_clears_state(collected, clock):
-    t = Throttle(limit=1, window=1.0, sink=collected.append, clock=clock)
-    t(_entry()); t(_entry())  # 1 pass, 1 drop
+    t(_entry()); t(_entry())  # second is dropped
+    assert t.dropped_count() == 1
     t.reset()
     assert t.dropped_count() == 0
-    t(_entry())               # should pass again after reset
+
+
+def test_reset_allows_entries_again(collected, clock):
+    """After reset(), the window state is cleared so entries pass through again."""
+    t = Throttle(limit=1, window=1.0, sink=collected.append, clock=clock)
+    t(_entry())  # allowed
+    t(_entry())  # dropped
+    t.reset()
+    t(_entry())  # should be allowed after reset
     assert len(collected) == 2
+    assert t.dropped_count() == 0
