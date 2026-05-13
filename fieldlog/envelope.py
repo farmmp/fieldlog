@@ -34,6 +34,10 @@ class Envelope:
         """Return seconds elapsed since the envelope was created."""
         return clock() - self.created_at
 
+    def is_expired(self, ttl: float, clock=time.time) -> bool:
+        """Return True if the envelope's age exceeds the given TTL in seconds."""
+        return self.age(clock=clock) > ttl
+
     def to_dict(self) -> Dict[str, Any]:
         """Serialise envelope to a plain dictionary."""
         return {
